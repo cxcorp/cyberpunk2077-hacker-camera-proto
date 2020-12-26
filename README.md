@@ -6,6 +6,10 @@ Work in progress, tensorflow and some additional OpenCV preprocessing needed.
 
 Online solver for the minigame available at https://github.com/cxcorp/cyberpunk2077-hacking-solver.
 
+## Demo
+
+![](https://raw.githubusercontent.com/cxcorp/cyberpunk2077-hacker-camera-proto/master/docs/demo.gif)
+
 ## Try it
 
 Clone repo, `npm i`, `npm start`, open ngrok tunnel `ngrok http 3000`, open ngrok's **HTTPS** link on your phone, and point it at the code matrix (or at a screenshot of one) to see a perspective corrected code grid - it automatically detects the grid size. If ngrok is no-go, try the `foxylion/nginx-self-signed-https` Docker image. HTTPS is needed to get the camera to work on mobile devices.
