@@ -444,13 +444,22 @@ function App() {
               const diffTlTr = Math.abs(topLeftAngle - topRightAngle);
               const diffTrBr = Math.abs(topRightAngle - bottomRightAngle);
               const diffBlBr = Math.abs(bottomLeftAngle - bottomRightAngle);
-
               if (
                 diffTlBl > 5 &&
                 diffTrBr > 5 &&
                 diffTlTr > 5 &&
                 diffBlBr > 5
               ) {
+                console.log("[rectTooWeird] not an isosceles trapezoid");
+                return true;
+              }
+
+              if (
+                Math.abs(topLeftAngle - topRightAngle) > 25 &&
+                Math.abs(bottomLeftAngle - bottomRightAngle) > 25
+              ) {
+                // parallellogram?
+                console.log("[rectTooWeird] parallellogram");
                 return true;
               }
 
@@ -470,6 +479,7 @@ function App() {
                 leftRightLinesRatio > max ||
                 leftRightLinesRatio < min
               ) {
+                console.log("[rectTooWeird] opposite line ratios");
                 return true;
               }
 
@@ -483,6 +493,7 @@ function App() {
                 2;
               // aspect ratio is over 3? nah dawg
               if (horizLineLen / vertLineLen > 3) {
+                console.log("[rectTooWeird] aspect ratio > 3");
                 return true;
               }
 
