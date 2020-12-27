@@ -515,32 +515,6 @@ function App() {
               return;
             }
 
-            /* const color = new cv.Scalar(0, 255, 0);
-            cv.line(output, topLeft, topRight, color, 2);
-            cv.line(output, topRight, bottomRight, color, 2);
-            cv.line(output, bottomRight, bottomLeft, color, 2);
-            cv.line(output, bottomLeft, topLeft, color, 2); */
-
-            // const textColor = new cv.Scalar(0, 0, 255);
-            // boundingRectangles.forEach((rect, i) => {
-            //   const point1 = new cv.Point(rect.x, rect.y);
-            //   const point2 = new cv.Point(
-            //     rect.x + rect.width,
-            //     rect.y + rect.height
-            //   );
-
-            //   cv.rectangle(output, point1, point2, color, 2, cv.LINE_AA, 0);
-            //   /* cv.putText(
-            //       output,
-            //       `${i}`,
-            //       new cv.Point(rect.x, rect.y + rect.height),
-            //       cv.FONT_HERSHEY_PLAIN,
-            //       3,
-            //       textColor,
-            //       2
-            //       ); */
-            // });
-
             // four point transform
             function fourPointTransform({ tl, tr, br, bl }) {
               // calculate new width of the image which is the largest
