@@ -290,7 +290,11 @@ function App() {
           cv.cvtColor(threshold, output, cv.COLOR_GRAY2BGR);
           threshold.delete();
 
-          const closestGridSize = Math.round(Math.sqrt(contours.size()));
+          // Subtract a couple from the guess before sqrt because the UI text elements
+          // below the grid dilate up to be around the size of the grid elements, so
+          // at low actual grid sizes this throws the guess up to 5 instead of 4
+          const contourLenModifier = -2
+          const closestGridSize = Math.round(Math.sqrt(contours.size() + contourLenModifier));
           const tileSizeOfClosestGrid = sourceGridWidth / closestGridSize;
           const areaOfTileOfClosestGrid =
             tileSizeOfClosestGrid * tileSizeOfClosestGrid;
@@ -434,8 +438,10 @@ function App() {
 
               // not an isosceles trapezoid or square
               if (
-                Math.abs(topLeftAngle - bottomRightAngle) > 5 ||
-                Math.abs(topRightAngle - bottomLeftAngle) > 5
+                (Math.abs(topLeftAngle - bottomRightAngle) > 5 &&
+                  Math.abs(topLeftAngle - topRightAngle)) ||
+                (Math.abs(bottomRightAngle - topRightAngle) > 5 &&
+                  Math.abs(bottomRight - bottomLeftAngle))
               ) {
                 return true;
               }
@@ -643,7 +649,6 @@ function App() {
             output = perspectived;
 
             const tileColor = new cv.Scalar(0, 255, 0);
-            const tileNegPad = acualGridTileWidth * 0.2;
             for (let y = 0; y < closestGridSize; y++) {
               for (let x = 0; x < closestGridSize; x++) {
                 const xx = x * acualGridTileWidth;
@@ -772,27 +777,6 @@ function App() {
         ></canvas>
         <p>source</p>
         <canvas className="d-none" ref={sourceCanvasRef}></canvas>
-
-        <div className="video-options">
-          <select
-            name="camera-selector"
-            id="camera-selector"
-            className="custom-select"
-            onChange={(e) => {
-              const id = e.currentTarget.value;
-              setSelectedDevice(
-                videoDevices.find((dev) => dev.deviceId === id)
-              );
-            }}
-          >
-            <option value="">Select camera</option>
-            {videoDevices.map((dev) => (
-              <option key={dev.deviceId} value={dev.deviceId}>
-                {dev.label}
-              </option>
-            ))}
-          </select>
-        </div>
 
         <img className="screenshot-image d-none" alt="" />
         <div className="controls">
