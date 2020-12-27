@@ -86,7 +86,6 @@ function App() {
   const sourceCanvasRef = useRef();
 
   const displayCanvasRef = useRef();
-  const dilatedCanvasRef = useRef();
 
   const fpsRef = useRef();
 
@@ -123,7 +122,6 @@ function App() {
     (async () => {
       /** @type {CanvasRenderingContext2D} */
       const displayCtx = displayCanvasRef.current.getContext("2d");
-      const dilatedCanvasCtx = dilatedCanvasRef.current.getContext("2d");
       /** @type {CanvasRenderingContext2D} */
       const sourceCtx = sourceCanvasRef.current.getContext("2d");
 
@@ -155,9 +153,6 @@ function App() {
       const displayHeight = displayWidth;
       displayCanvasRef.current.width = displayWidth;
       displayCanvasRef.current.height = displayHeight;
-
-      dilatedCanvasRef.current.width = displayWidth;
-      dilatedCanvasRef.current.height = displayHeight;
 
       const renderGridSizeMultiplier = 1 / 2;
       const sourceGridWidth = sourceWidth * renderGridSizeMultiplier;
@@ -272,8 +267,6 @@ function App() {
           );
           kernel.delete();
 
-          cv.imshow(dilatedCanvasRef.current, dilated);
-
           const contours = new cv.MatVector();
           const hierarchy = new cv.Mat();
           cv.findContours(
@@ -286,16 +279,19 @@ function App() {
 
           dilated.delete();
 
-          let output = new cv.Mat();
-          cv.cvtColor(threshold, output, cv.COLOR_GRAY2BGR);
+          let output = threshold.clone();
           threshold.delete();
 
           // Subtract a couple from the guess before sqrt because the UI text elements
           // below the grid dilate up to be around the size of the grid elements, so
           // at low actual grid sizes this throws the guess up to 5 instead of 4
-          const contourLenModifier = -2
-          const closestGridSize = Math.round(Math.sqrt(contours.size() + contourLenModifier));
-          const tileSizeOfClosestGrid = sourceGridWidth / closestGridSize;
+          const contourLenModifier = -2;
+          const closestGridSize = Math.round(
+            // sub 0.25 to prefer rounding down instead of up since it's more likely
+            // that there's MORE non-grid elements on screen instead of fewer
+            Math.sqrt(contours.size() + contourLenModifier) - 0.25
+          );
+          const tileSizeOfClosestGrid = sourceGridWidth / (closestGridSize - 1);
           const areaOfTileOfClosestGrid =
             tileSizeOfClosestGrid * tileSizeOfClosestGrid;
 
@@ -311,8 +307,13 @@ function App() {
             const area = cv.contourArea(cnt);
 
             // skip contours that aren't near approx size
-            if (area <= areaOfTileOfClosestGrid) {
-              const rect = cv.boundingRect(cnt);
+            const rect = cv.boundingRect(cnt);
+            const aspectRatio = rect.width / rect.height;
+            if (
+              area <= areaOfTileOfClosestGrid &&
+              aspectRatio < 2.5 &&
+              aspectRatio > 0.8
+            ) {
               nearTileSizeContours.push({
                 cnt,
                 boundingRect: rect,
@@ -407,7 +408,7 @@ function App() {
               y: sourceGridHeight,
             });
 
-            const isRectTooWeird = () => {
+            function isRectTooWeird() {
               const getThreePointEdgeAngle = (a, b, c) =>
                 Math.acos(
                   vectorDot(vectorFromPoints(a, b), vectorFromPoints(b, c)) /
@@ -436,12 +437,17 @@ function App() {
                 topLeft
               );
 
-              // not an isosceles trapezoid or square
+              // not an isosceles trapezoid?
+              const diffTlBl = Math.abs(topLeftAngle - bottomLeft);
+              const diffTlTr = Math.abs(topLeftAngle - topRightAngle);
+              const diffTrBr = Math.abs(topRightAngle - bottomRightAngle);
+              const diffBlBr = Math.abs(bottomLeftAngle - bottomRightAngle);
+
               if (
-                (Math.abs(topLeftAngle - bottomRightAngle) > 5 &&
-                  Math.abs(topLeftAngle - topRightAngle)) ||
-                (Math.abs(bottomRightAngle - topRightAngle) > 5 &&
-                  Math.abs(bottomRight - bottomLeftAngle))
+                diffTlBl > 5 &&
+                diffTrBr > 5 &&
+                diffTlTr > 5 &&
+                diffBlBr > 5
               ) {
                 return true;
               }
@@ -453,7 +459,7 @@ function App() {
                 pointDistance(topLeft, bottomLeft) /
                 pointDistance(topRight, bottomRight);
 
-              // opposite lines' ratios too wonky -> near-triangle trapezoid or something, skip!
+              // opposite lines' ratios not too wonky -> not a near-triangle trapezoid or something
               const max = 3;
               const min = 1 / 3;
               if (
@@ -465,16 +471,30 @@ function App() {
                 return true;
               }
 
+              const vertLineLen =
+                (pointDistance(topLeft, bottomLeft) +
+                  pointDistance(topRight, bottomRight)) /
+                2;
+              const horizLineLen =
+                (pointDistance(topLeft, topRight) +
+                  pointDistance(bottomLeft, bottomRight)) /
+                2;
+              // aspect ratio is over 3? nah dawg
+              if (horizLineLen / vertLineLen > 3) {
+                return true;
+              }
+
               return false;
-            };
+            }
 
             if (isRectTooWeird()) {
+              console.log("bail-isRectTooWeird");
               const resized = new cv.Mat();
               cv.resize(output, resized, new cv.Size(400, 400), cv.INTER_AREA);
               output.delete();
               output = resized;
 
-              cv.cvtColor(output, output, cv.COLOR_BGR2RGB);
+              cv.cvtColor(output, output, cv.COLOR_GRAY2RGB);
               cv.imshow(outputCanvasRef.current, output);
               output.delete();
 
@@ -610,21 +630,31 @@ function App() {
             });
 
             const newSizeAspectRatio = newWidthPadded / newHeightPadded;
+
             if (
-              newHeightPadded > sourceGridHeight ||
-              newWidthPadded > sourceGridWidth ||
+              newHeightPadded > sourceGridHeight + padY ||
+              newWidthPadded > sourceGridWidth + padX ||
               newSizeAspectRatio > 1.2 ||
-              newSizeAspectRatio < 0.8
+              newSizeAspectRatio < 0.8 ||
+              paddedPoints.some(
+                (point) =>
+                  point.x < 0 - padX ||
+                  point.y < 0 - padY ||
+                  point.x > sourceGridWidth + padX ||
+                  point.y > sourceGridHeight + padY
+              )
             ) {
               // lol wtf, naw man
               M_padded.delete();
+
+              console.log("bail-fuckload-of-ehtoja");
 
               const resized = new cv.Mat();
               cv.resize(output, resized, new cv.Size(400, 400), cv.INTER_AREA);
               output.delete();
               output = resized;
 
-              cv.cvtColor(output, output, cv.COLOR_BGR2RGB);
+              cv.cvtColor(output, output, cv.COLOR_GRAY2RGB);
               cv.imshow(outputCanvasRef.current, output);
               output.delete();
 
@@ -648,7 +678,7 @@ function App() {
             output.delete();
             output = perspectived;
 
-            const tileColor = new cv.Scalar(0, 255, 0);
+            const tileColor = new cv.Scalar(255, 255, 255);
             for (let y = 0; y < closestGridSize; y++) {
               for (let x = 0; x < closestGridSize; x++) {
                 const xx = x * acualGridTileWidth;
@@ -718,11 +748,11 @@ function App() {
             new cv.Point(10, 30),
             cv.FONT_HERSHEY_PLAIN,
             2,
-            new cv.Scalar(255, 0, 255),
+            new cv.Scalar(255, 255, 255),
             2
           );
 
-          cv.cvtColor(output, output, cv.COLOR_BGR2RGB);
+          cv.cvtColor(output, output, cv.COLOR_GRAY2RGB);
           cv.imshow(outputCanvasRef.current, output);
           output.delete();
 
@@ -743,38 +773,12 @@ function App() {
     };
   }, [cvRunning]);
 
-  // 'display' | 'dilated'
-  const [activeDisplay, setActiveDisplay] = useState("display");
-
   return (
     <>
       <div className="display-cover">
         <video className="d-none" autoPlay ref={videoRef}></video>
-        <p>displays</p>
-        <div style={{ display: "flex" }}>
-          {["display", "dilated"].map((displayType) => (
-            <button
-              key={displayType}
-              onClick={() => setActiveDisplay(displayType)}
-            >
-              {displayType}
-            </button>
-          ))}
-        </div>
-        <canvas
-          style={{
-            width: "100%",
-            display: activeDisplay === "display" ? "block" : "none",
-          }}
-          ref={displayCanvasRef}
-        ></canvas>
-        <canvas
-          style={{
-            width: "100%",
-            display: activeDisplay === "dilated" ? "block" : "none",
-          }}
-          ref={dilatedCanvasRef}
-        ></canvas>
+        <p>display</p>
+        <canvas style={{ width: "100%" }} ref={displayCanvasRef}></canvas>
         <p>source</p>
         <canvas className="d-none" ref={sourceCanvasRef}></canvas>
 
