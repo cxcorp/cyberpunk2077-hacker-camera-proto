@@ -10,9 +10,9 @@ const constraints = {
     facingMode: {
       ideal: "environment",
     },
-    aspectRatio: {
+    /* aspectRatio: {
       ideal: 1,
-    },
+    }, */
     resizeMode: "crop-and-scale",
     width: {
       ideal: SOURCE_SIZE,
@@ -50,6 +50,13 @@ const mapPoint = ({ x, y }, inRange, outRange) =>
     mapRange(y, inRange.ymin, inRange.ymax, outRange.ymin, outRange.ymax)
   );
 
+const pointDistance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+const vectorFromPoints = (start, end) => ({
+  x: end.x - start.x,
+  y: end.y - start.y,
+});
+const vectorDot = (a, b) => a.x * b.x + a.y * b.y;
+
 function App() {
   useEffect(() => {
     window.feather.replace();
@@ -77,7 +84,10 @@ function App() {
   const videoRef = useRef();
   const outputCanvasRef = useRef();
   const sourceCanvasRef = useRef();
+
   const displayCanvasRef = useRef();
+  const dilatedCanvasRef = useRef();
+
   const fpsRef = useRef();
 
   const [cvRunning, setCvRunning] = useState(false);
@@ -113,6 +123,7 @@ function App() {
     (async () => {
       /** @type {CanvasRenderingContext2D} */
       const displayCtx = displayCanvasRef.current.getContext("2d");
+      const dilatedCanvasCtx = dilatedCanvasRef.current.getContext("2d");
       /** @type {CanvasRenderingContext2D} */
       const sourceCtx = sourceCanvasRef.current.getContext("2d");
 
@@ -128,8 +139,12 @@ function App() {
         videoRef.current.videoHeight === videoSmallestEdge
           ? videoRef.current.videoHeight
           : videoRef.current.videoWidth;
-      const videoCropX = videoRef.current.videoWidth - videoWidth;
-      const videoCropY = videoRef.current.videoHeight - videoHeight;
+      const videoCropX = Math.floor(
+        (videoRef.current.videoWidth - videoWidth) / 2
+      );
+      const videoCropY = Math.floor(
+        (videoRef.current.videoHeight - videoHeight) / 2
+      );
 
       sourceCanvasRef.current.width = SOURCE_SIZE;
       sourceCanvasRef.current.height = SOURCE_SIZE;
@@ -140,6 +155,9 @@ function App() {
       const displayHeight = displayWidth;
       displayCanvasRef.current.width = displayWidth;
       displayCanvasRef.current.height = displayHeight;
+
+      dilatedCanvasRef.current.width = displayWidth;
+      dilatedCanvasRef.current.height = displayHeight;
 
       const renderGridSizeMultiplier = 1 / 2;
       const sourceGridWidth = sourceWidth * renderGridSizeMultiplier;
@@ -159,6 +177,8 @@ function App() {
       if (window.cv instanceof Promise) {
         window.cv = await window.cv;
       }
+
+      displayCtx.font = "16px Input";
 
       let startTs;
       async function doRender(timestamp) {
@@ -234,11 +254,11 @@ function App() {
           result.delete();
 
           const threshold = new cv.Mat();
-          cv.threshold(blurred, threshold, 175, 255, cv.THRESH_BINARY);
+          cv.threshold(blurred, threshold, 185, 255, cv.THRESH_BINARY);
           blurred.delete();
 
           const dilated = new cv.Mat();
-          const kernel = cv.Mat.ones(5, 5, cv.CV_8U);
+          const kernel = cv.Mat.ones(4, 4, cv.CV_8U);
           const anchor = new cv.Point(-1, -1);
 
           cv.dilate(
@@ -251,6 +271,8 @@ function App() {
             cv.morphologyDefaultBorderValue()
           );
           kernel.delete();
+
+          cv.imshow(dilatedCanvasRef.current, dilated);
 
           const contours = new cv.MatVector();
           const hierarchy = new cv.Mat();
@@ -272,16 +294,6 @@ function App() {
           const tileSizeOfClosestGrid = sourceGridWidth / closestGridSize;
           const areaOfTileOfClosestGrid =
             tileSizeOfClosestGrid * tileSizeOfClosestGrid;
-
-          cv.putText(
-            output,
-            `grid: ${closestGridSize}`,
-            new cv.Point(10, 30),
-            cv.FONT_HERSHEY_PLAIN,
-            2,
-            new cv.Scalar(255, 0, 255),
-            2
-          );
 
           const midpoint = (rect) => ({
             x: rect.x + rect.width / 2,
@@ -391,50 +403,84 @@ function App() {
               y: sourceGridHeight,
             });
 
-            const color = new cv.Scalar(0, 255, 0);
+            const isRectTooWeird = () => {
+              const getThreePointEdgeAngle = (a, b, c) =>
+                Math.acos(
+                  vectorDot(vectorFromPoints(a, b), vectorFromPoints(b, c)) /
+                    (pointDistance(a, b) * pointDistance(b, c))
+                ) *
+                (180 / Math.PI);
+
+              const topLeftAngle = getThreePointEdgeAngle(
+                bottomLeft,
+                topLeft,
+                topRight
+              );
+              const topRightAngle = getThreePointEdgeAngle(
+                topLeft,
+                topRight,
+                bottomRight
+              );
+              const bottomRightAngle = getThreePointEdgeAngle(
+                topRight,
+                bottomRight,
+                bottomLeft
+              );
+              const bottomLeftAngle = getThreePointEdgeAngle(
+                bottomRight,
+                bottomLeft,
+                topLeft
+              );
+
+              // not an isosceles trapezoid or square
+              if (
+                Math.abs(topLeftAngle - bottomRightAngle) > 5 ||
+                Math.abs(topRightAngle - bottomLeftAngle) > 5
+              ) {
+                return true;
+              }
+
+              const topBotLinesRatio =
+                pointDistance(topLeft, topRight) /
+                pointDistance(bottomLeft, bottomRight);
+              const leftRightLinesRatio =
+                pointDistance(topLeft, bottomLeft) /
+                pointDistance(topRight, bottomRight);
+
+              // opposite lines' ratios too wonky -> near-triangle trapezoid or something, skip!
+              const max = 3;
+              const min = 1 / 3;
+              if (
+                topBotLinesRatio > max ||
+                topBotLinesRatio < min ||
+                leftRightLinesRatio > max ||
+                leftRightLinesRatio < min
+              ) {
+                return true;
+              }
+
+              return false;
+            };
+
+            if (isRectTooWeird()) {
+              const resized = new cv.Mat();
+              cv.resize(output, resized, new cv.Size(400, 400), cv.INTER_AREA);
+              output.delete();
+              output = resized;
+
+              cv.cvtColor(output, output, cv.COLOR_BGR2RGB);
+              cv.imshow(outputCanvasRef.current, output);
+              output.delete();
+
+              animFrameId = window.requestAnimationFrame(doRender);
+              return;
+            }
+
+            /* const color = new cv.Scalar(0, 255, 0);
             cv.line(output, topLeft, topRight, color, 2);
             cv.line(output, topRight, bottomRight, color, 2);
             cv.line(output, bottomRight, bottomLeft, color, 2);
-            cv.line(output, bottomLeft, topLeft, color, 2);
-
-            displayCtx.beginPath();
-            displayCtx.strokeStyle = "#ff0000";
-            displayCtx.lineWidth = 2;
-
-            [
-              [topLeft, topRight],
-              [topRight, bottomRight],
-              [bottomRight, bottomLeft],
-              [bottomLeft, topLeft],
-            ]
-              .map((pair) =>
-                pair.map((point) => {
-                  // interpolate point from sourceGrid onto displayGrid,
-                  // add displayGrid's displayCanvas offset and render
-                  // to displayGrid
-                  return mapPoint(
-                    point,
-                    {
-                      xmin: 0,
-                      xmax: sourceGridWidth,
-                      ymin: 0,
-                      ymax: sourceGridHeight,
-                    },
-                    {
-                      xmin: 0 + displayGridStartX,
-                      xmax: displayGridWidth + displayGridStartX,
-                      ymin: 0 + displayGridStartY,
-                      ymax: displayGridHeight + displayGridStartY,
-                    }
-                  );
-                })
-              )
-              .forEach(([start, end]) => {
-                displayCtx.moveTo(start.x, start.y);
-                displayCtx.lineTo(end.x, end.y);
-              });
-            displayCtx.stroke();
-            displayCtx.closePath();
+            cv.line(output, bottomLeft, topLeft, color, 2); */
 
             // const textColor = new cv.Scalar(0, 0, 255);
             // boundingRectangles.forEach((rect, i) => {
@@ -474,6 +520,7 @@ function App() {
                 Math.round(heightLeft),
                 Math.round(heightRight)
               );
+              const newSideLength = Math.min(maxWidth, maxHeight);
 
               const srcRect = cv.matFromArray(4, 1, cv.CV_32FC2, [
                 tl.x,
@@ -488,19 +535,20 @@ function App() {
               const dstRect = cv.matFromArray(4, 1, cv.CV_32FC2, [
                 0,
                 0,
-                maxWidth - 1,
+                newSideLength - 1,
                 0,
-                maxWidth - 1,
-                maxHeight - 1,
+                newSideLength - 1,
+                newSideLength - 1,
                 0,
-                maxHeight - 1,
+                newSideLength - 1,
               ]);
 
               const M = cv.getPerspectiveTransform(srcRect, dstRect);
+
               srcRect.delete();
               dstRect.delete();
 
-              return { M, newWidth: maxWidth, newHeight: maxHeight };
+              return { M, newWidth: newSideLength, newHeight: newSideLength };
             }
 
             const { M, newWidth, newHeight } = fourPointTransform({
@@ -510,8 +558,11 @@ function App() {
               bl: bottomLeft,
             });
 
-            const padX = tileSizeOfClosestGrid/2;
-            const padY = tileSizeOfClosestGrid/2;
+            const acualGridTileWidth = newWidth / (closestGridSize - 1);
+
+            // pad it to the actua-l outer grid so camera doesn't get too close
+            const padX = acualGridTileWidth / 2;
+            const padY = acualGridTileWidth / 2;
             const M_inv = M.inv(cv.DECOMP_SVD); // most similar to np.linalg.pinv(M)
             M.delete();
             const paddedDstRect = cv.matFromArray(4, 1, cv.CV_32FC2, [
@@ -552,6 +603,29 @@ function App() {
               bl: paddedPoints[3],
             });
 
+            const newSizeAspectRatio = newWidthPadded / newHeightPadded;
+            if (
+              newHeightPadded > sourceGridHeight ||
+              newWidthPadded > sourceGridWidth ||
+              newSizeAspectRatio > 1.2 ||
+              newSizeAspectRatio < 0.8
+            ) {
+              // lol wtf, naw man
+              M_padded.delete();
+
+              const resized = new cv.Mat();
+              cv.resize(output, resized, new cv.Size(400, 400), cv.INTER_AREA);
+              output.delete();
+              output = resized;
+
+              cv.cvtColor(output, output, cv.COLOR_BGR2RGB);
+              cv.imshow(outputCanvasRef.current, output);
+              output.delete();
+
+              animFrameId = window.requestAnimationFrame(doRender);
+              return;
+            }
+
             const perspectived = new cv.Mat();
             cv.warpPerspective(
               output,
@@ -562,18 +636,86 @@ function App() {
               cv.BORDER_CONSTANT,
               new cv.Scalar()
             );
+
             M_padded.delete();
 
             output.delete();
-            output = perspectived
-            //throw new Error("log");
-            //output = perspectived;
+            output = perspectived;
+
+            const tileColor = new cv.Scalar(0, 255, 0);
+            const tileNegPad = acualGridTileWidth * 0.2;
+            for (let y = 0; y < closestGridSize; y++) {
+              for (let x = 0; x < closestGridSize; x++) {
+                const xx = x * acualGridTileWidth;
+                const yy = y * acualGridTileWidth;
+                cv.rectangle(
+                  output,
+                  {
+                    x: xx,
+                    y: yy,
+                  },
+                  {
+                    x: xx + acualGridTileWidth,
+                    y: yy + acualGridTileWidth,
+                  },
+                  tileColor
+                );
+              }
+            }
+
+            displayCtx.beginPath();
+            displayCtx.strokeStyle = "#ff0000";
+            displayCtx.lineWidth = 2;
+            [
+              [paddedPoints[0], paddedPoints[1]],
+              [paddedPoints[1], paddedPoints[2]],
+              [paddedPoints[2], paddedPoints[3]],
+              [paddedPoints[3], paddedPoints[0]],
+            ]
+              .map((pair) =>
+                pair.map((point) => {
+                  // interpolate point from sourceGrid onto displayGrid,
+                  // add displayGrid's displayCanvas offset and render
+                  // to displayGrid
+                  return mapPoint(
+                    point,
+                    {
+                      xmin: 0,
+                      xmax: sourceGridWidth,
+                      ymin: 0,
+                      ymax: sourceGridHeight,
+                    },
+                    {
+                      xmin: 0 + displayGridStartX,
+                      xmax: displayGridWidth + displayGridStartX,
+                      ymin: 0 + displayGridStartY,
+                      ymax: displayGridHeight + displayGridStartY,
+                    }
+                  );
+                })
+              )
+              .forEach(([start, end]) => {
+                displayCtx.moveTo(start.x, start.y);
+                displayCtx.lineTo(end.x, end.y);
+              });
+            displayCtx.stroke();
+            displayCtx.closePath();
           }
 
-          const resized = new cv.Mat()
-          cv.resize(output, resized, new cv.Size(400, 400), cv.INTER_AREA)
-          output.delete()
-          output = resized
+          const resized = new cv.Mat();
+          cv.resize(output, resized, new cv.Size(400, 400), cv.INTER_AREA);
+          output.delete();
+          output = resized;
+
+          cv.putText(
+            output,
+            `grid: ${closestGridSize}`,
+            new cv.Point(10, 30),
+            cv.FONT_HERSHEY_PLAIN,
+            2,
+            new cv.Scalar(255, 0, 255),
+            2
+          );
 
           cv.cvtColor(output, output, cv.COLOR_BGR2RGB);
           cv.imshow(outputCanvasRef.current, output);
@@ -583,6 +725,8 @@ function App() {
           animFrameId = window.requestAnimationFrame(doRender);
         } catch (e) {
           const err = stringifyError(e);
+          console.error(err);
+          console.error(e);
           alert(err);
         }
       }
@@ -594,12 +738,38 @@ function App() {
     };
   }, [cvRunning]);
 
+  // 'display' | 'dilated'
+  const [activeDisplay, setActiveDisplay] = useState("display");
+
   return (
     <>
       <div className="display-cover">
         <video className="d-none" autoPlay ref={videoRef}></video>
-        <p>display</p>
-        <canvas style={{ width: "100%" }} ref={displayCanvasRef}></canvas>
+        <p>displays</p>
+        <div style={{ display: "flex" }}>
+          {["display", "dilated"].map((displayType) => (
+            <button
+              key={displayType}
+              onClick={() => setActiveDisplay(displayType)}
+            >
+              {displayType}
+            </button>
+          ))}
+        </div>
+        <canvas
+          style={{
+            width: "100%",
+            display: activeDisplay === "display" ? "block" : "none",
+          }}
+          ref={displayCanvasRef}
+        ></canvas>
+        <canvas
+          style={{
+            width: "100%",
+            display: activeDisplay === "dilated" ? "block" : "none",
+          }}
+          ref={dilatedCanvasRef}
+        ></canvas>
         <p>source</p>
         <canvas className="d-none" ref={sourceCanvasRef}></canvas>
 
