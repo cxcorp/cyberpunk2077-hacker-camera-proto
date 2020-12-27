@@ -286,11 +286,13 @@ function App() {
           // below the grid dilate up to be around the size of the grid elements, so
           // at low actual grid sizes this throws the guess up to 5 instead of 4
           const contourLenModifier = -2;
-          const closestGridSize = Math.round(
-            // sub 0.25 to prefer rounding down instead of up since it's more likely
-            // that there's MORE non-grid elements on screen instead of fewer
-            Math.sqrt(contours.size() + contourLenModifier) - 0.25
-          );
+          const closestGridSize = Number.isInteger(Math.sqrt(contours.size()))
+            ? Math.sqrt(contours.size())
+            : Math.round(
+                // sub 0.25 to prefer rounding down instead of up since it's more likely
+                // that there's MORE non-grid elements on screen instead of fewer
+                Math.sqrt(contours.size() + contourLenModifier) - 0.25
+              );
           const tileSizeOfClosestGrid = sourceGridWidth / (closestGridSize - 1);
           const areaOfTileOfClosestGrid =
             tileSizeOfClosestGrid * tileSizeOfClosestGrid;
