@@ -273,7 +273,7 @@ function App() {
             dilated,
             contours,
             hierarchy,
-            cv.RETR_CCOMP,
+            cv.RETR_EXTERNAL,
             cv.CHAIN_APPROX_SIMPLE
           );
 
