@@ -1,6 +1,7 @@
 /* global cv */
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { createWorker, createScheduler, PSM } from "tesseract.js";
 import "./App.css";
 
 const SOURCE_SIZE = 1080;
@@ -18,6 +19,63 @@ const constraints = {
       ideal: SOURCE_SIZE,
     },
   },
+};
+
+const uniqChars = (arr) => [...new Set(arr.join("").split(""))];
+const getOcrWhitelist = () =>
+  [" ", ...uniqChars(["1C", "55", "7A", "BD", "E9", "FF"])].join("");
+
+const ocrScheduler = createScheduler();
+
+let workerLoggerHook = null;
+
+/** @type {Promise<void>} */
+let tesseractReady = null;
+
+/** @returns {Promise<void>} */
+const loadTesseractWorkers = () => {
+  if (tesseractReady !== null) {
+    return tesseractReady;
+  }
+
+  // const MAX_PROBABLE_COL_COUNT = 7;
+  // const workerCount = window.navigator?.hardwareConcurrency
+  //   ? Math.min(window.navigator.hardwareConcurrency, MAX_PROBABLE_COL_COUNT)
+  //   : 2;
+
+  const initPromises = [];
+  for (let i = 0; i < 1; i++) {
+    const worker = createWorker({
+      langPath: "/ocr",
+      gzip: false,
+      logger: (msg) => {
+        console.log(`[worker ${i}]: `, msg);
+
+        if (workerLoggerHook) {
+          workerLoggerHook(msg);
+        }
+      },
+      errorHandler: (err) => console.error(`[worker ${i}]: `, err),
+    });
+
+    const initPromise = worker
+      .load()
+      .then(() => worker.loadLanguage("eng"))
+      .then(() => worker.initialize("eng"))
+      .then(() =>
+        worker.setParameters({
+          tessedit_char_whitelist: getOcrWhitelist(),
+          tessedit_pageseg_mode: PSM.SINGLE_COLUMN,
+        })
+      )
+      .then(() => {
+        ocrScheduler.addWorker(worker);
+      });
+    initPromises.push(initPromise);
+  }
+
+  tesseractReady = Promise.all(initPromises);
+  return tesseractReady;
 };
 
 function stringifyError(err) {
@@ -65,7 +123,7 @@ function App() {
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState();
 
-  useEffect(() => {
+  /*useEffect(() => {
     (async () => {
       if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
         alert("enumerateDevices() not supported.");
@@ -79,10 +137,14 @@ function App() {
 
       setVideoDevices(videoDevices);
     })();
-  }, []);
+  }, []);*/
 
   const videoRef = useRef();
   const outputCanvasRef = useRef();
+  const debugCanvasRef = useRef();
+  const [outputCanvasType, setOutputCanvasType] = useState("normal");
+  const renderDebugCanvasRef = useRef(false);
+  renderDebugCanvasRef.current = outputCanvasType === "debug";
   const sourceCanvasRef = useRef();
 
   const displayCanvasRef = useRef();
@@ -93,6 +155,13 @@ function App() {
 
   const handleStart = async () => {
     setCvRunning(false);
+
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      alert(
+        `Your browser does not support MediaDevices.getUserMedia(). Your browser may be too old. If you're on iOS, only Safari supports the camera API.`
+      );
+      return;
+    }
     const updContstraints = {
       ...constraints,
       /*deviceId: {
@@ -104,11 +173,117 @@ function App() {
       setCvRunning(true);
     }
     videoRef.current.addEventListener("loadedmetadata", handleloadedmetadata);
+    videoRef.current.setAttribute("autoplay", "");
+    videoRef.current.setAttribute("muted", "");
+    videoRef.current.setAttribute("playsinline", "");
 
-    const stream = await navigator.mediaDevices.getUserMedia(updContstraints);
+    const stream = await window.navigator.mediaDevices.getUserMedia(
+      updContstraints
+    );
     videoRef.current.srcObject = stream;
-    videoRef.current.play();
+    //videoRef.current.play();
   };
+
+  const [captureImg, setCaptureImg] = useState();
+
+  const outputColsRef = useRef([]);
+  const captureCanvasRef = useRef();
+
+  const handleCaptureClicked = useCallback(() => {
+    setCvRunning(false);
+
+    captureCanvasRef.current.width = outputCanvasRef.current.clientWidth;
+    captureCanvasRef.current.height = outputCanvasRef.current.clientHeight;
+    /** @type {CanvasRenderingContext2D} */
+    const ctx = captureCanvasRef.current.getContext("2d");
+    ctx.drawImage(outputCanvasRef.current, 0, 0);
+
+    captureCanvasRef.current.classList.remove("d-none");
+    const imgDataUrl = outputCanvasRef.current.toDataURL("image/png");
+    setCaptureImg({ src: imgDataUrl });
+
+    setTimeout(async () => {
+      try {
+        console.log("beginning to load tesseract workers");
+        await loadTesseractWorkers();
+        console.log("finish loading tesseract workers");
+
+        const height = captureCanvasRef.current.height;
+        const xSplits = outputColsRef.current;
+        const tileWidth = Math.abs(xSplits[1] - xSplits[0]);
+        const colSlices = xSplits.map((split) =>
+          ctx.getImageData(split, 0, tileWidth, height)
+        );
+
+        let currXOffset = 0;
+
+        workerLoggerHook = (msg) => {
+          console.log(`[worker]: `, msg);
+
+          if (!isNaN(msg.progress)) {
+            ctx.beginPath();
+            ctx.fillStyle = "#3498db";
+            ctx.fillRect(currXOffset, 0, tileWidth * msg.progress, 10);
+            ctx.closePath();
+          }
+        };
+
+        /*const jobs = await Promise.all(
+          xSplits.map((x) =>
+            ocrScheduler.addJob("recognize", captureCanvasRef.current, {
+              rectangle: {
+                top: 0,
+                left: x,
+                height: height,
+                width: tileWidth,
+              },
+            })
+          )
+        );*/
+
+        const sliceCanvas = document.createElement("canvas");
+        for (let i = 0; i < xSplits.length; i++) {
+          currXOffset = xSplits[i];
+          const colSlice = colSlices[i];
+          sliceCanvas.width = tileWidth;
+          sliceCanvas.height = height;
+          sliceCanvas.getContext("2d").putImageData(colSlice, 0, 0);
+          const imageData = sliceCanvas.toDataURL("image/png");
+
+          const { data } = await ocrScheduler.addJob("recognize", imageData);
+          const { text, lines } = data;
+
+          ctx.textAlign = "center";
+          for (const { confidence, text, bbox } of lines) {
+            const { x0, y0, x1, y1 } = bbox;
+
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(255, 0, 0, ${confidence * 255})`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(xSplits[i] + x0, y0, x1 - x0, y1 - y0);
+
+            const trimmedText = text.replace(/\s+/g, "");
+
+            ctx.font = '20px "Rajdhani SemiBold"';
+            ctx.strokeText(
+              trimmedText,
+              xSplits[i] + x0 + (x1 - x0) / 2,
+              y1 + 25
+            );
+            ctx.closePath();
+          }
+          console.log(data);
+        }
+      } catch (e) {
+        console.error(e);
+        alert(e);
+      }
+    }, 100);
+  }, [setCvRunning, outputCanvasRef, setCaptureImg, outputColsRef]);
+
+  const handleStopClicked = useCallback(() => {
+    setCvRunning(false);
+  }, [setCvRunning]);
 
   useEffect(() => {
     if (!cvRunning) {
@@ -153,6 +328,8 @@ function App() {
       const displayHeight = displayWidth;
       displayCanvasRef.current.width = displayWidth;
       displayCanvasRef.current.height = displayHeight;
+      debugCanvasRef.current.width = displayWidth;
+      debugCanvasRef.current.height = displayHeight;
 
       const renderGridSizeMultiplier = 1 / 2;
       const sourceGridWidth = sourceWidth * renderGridSizeMultiplier;
@@ -277,7 +454,7 @@ function App() {
             cv.CHAIN_APPROX_SIMPLE
           );
 
-          dilated.delete();
+          //dilated.delete();
 
           let output = threshold.clone();
           threshold.delete();
@@ -302,6 +479,10 @@ function App() {
             y: rect.y + rect.height / 2,
           });
 
+          const dilatedC = new cv.Mat();
+          cv.cvtColor(dilated, dilatedC, cv.COLOR_GRAY2RGB);
+          dilated.delete();
+
           let nearTileSizeContours = [];
           const contoursSize = contours.size();
           for (let i = 0; i < contoursSize; i++) {
@@ -321,11 +502,23 @@ function App() {
                 boundingRect: rect,
                 midpoint: midpoint(rect),
               });
+              /* cv.rectangle(
+                output,
+                { x: rect.x, y: rect.y },
+                { x: rect.x + rect.width, y: rect.y + rect.height },
+                new cv.Scalar(255, 255, 255),
+                2
+              ); */
             } else {
               // not used for anything anymore, clean up - selected cnts are cleaned up later
               cnt.delete();
             }
           }
+
+          if (renderDebugCanvasRef.current) {
+            cv.imshow(debugCanvasRef.current, dilatedC);
+          }
+          dilatedC.delete();
 
           const medianBy = (arr, selector) => {
             if (arr.length === 0) {
@@ -502,6 +695,16 @@ function App() {
 
             if (isRectTooWeird()) {
               console.log("bail-isRectTooWeird");
+              /* cv.putText(
+                output,
+                `grid: ${closestGridSize}`,
+                new cv.Point(10, 30),
+                cv.FONT_HERSHEY_PLAIN,
+                2,
+                new cv.Scalar(255, 255, 255),
+                2
+              ); */
+
               const resized = new cv.Mat();
               cv.resize(output, resized, new cv.Size(400, 400), cv.INTER_AREA);
               output.delete();
@@ -526,7 +729,7 @@ function App() {
                 Math.round(widthBot)
               );
 
-              // calcualte new height
+              // calculate new height
               const heightLeft = Math.hypot(tr.x - br.x, tr.y - br.y);
               const heightRight = Math.hypot(tl.x - bl.x, tl.y - bl.y);
               const maxHeight = Math.max(
@@ -636,6 +839,16 @@ function App() {
 
               console.log("bail-fuckload-of-ehtoja");
 
+              /* cv.putText(
+                output,
+                `grid: ${closestGridSize}`,
+                new cv.Point(10, 30),
+                cv.FONT_HERSHEY_PLAIN,
+                2,
+                new cv.Scalar(255, 255, 255),
+                2
+              ); */
+
               const resized = new cv.Mat();
               cv.resize(output, resized, new cv.Size(400, 400), cv.INTER_AREA);
               output.delete();
@@ -665,25 +878,36 @@ function App() {
             output.delete();
             output = perspectived;
 
+            outputColsRef.current = [];
+            for (let i = 0; i < closestGridSize; i++) {
+              const x = mapRange(
+                i * acualGridTileWidth,
+                0,
+                output.cols,
+                0,
+                400
+              );
+              outputColsRef.current.push(x);
+            }
             const tileColor = new cv.Scalar(255, 255, 255);
-            for (let y = 0; y < closestGridSize; y++) {
+            /* for (let y = 0; y < closestGridSize; y++) {
               for (let x = 0; x < closestGridSize; x++) {
                 const xx = x * acualGridTileWidth;
                 const yy = y * acualGridTileWidth;
                 cv.rectangle(
                   output,
                   {
-                    x: xx,
-                    y: yy,
+                    x: xx + tilePad,
+                    y: yy + tilePad,
                   },
                   {
-                    x: xx + acualGridTileWidth,
-                    y: yy + acualGridTileWidth,
+                    x: xx + acualGridTileWidth - tilePad,
+                    y: yy + acualGridTileWidth - tilePad,
                   },
                   tileColor
                 );
               }
-            }
+            } */
 
             displayCtx.beginPath();
             displayCtx.strokeStyle = "#ff0000";
@@ -729,7 +953,7 @@ function App() {
           output.delete();
           output = resized;
 
-          cv.putText(
+          /* cv.putText(
             output,
             `grid: ${closestGridSize}`,
             new cv.Point(10, 30),
@@ -737,8 +961,9 @@ function App() {
             2,
             new cv.Scalar(255, 255, 255),
             2
-          );
+          ); */
 
+          cv.bitwise_not(output, output);
           cv.cvtColor(output, output, cv.COLOR_GRAY2RGB);
           cv.imshow(outputCanvasRef.current, output);
           output.delete();
@@ -765,9 +990,56 @@ function App() {
       <div className="display-cover">
         <video className="d-none" autoPlay ref={videoRef}></video>
         <p>display</p>
-        <canvas style={{ width: "100%" }} ref={displayCanvasRef}></canvas>
+        <div style={{ display: "flex" }}>
+          {["normal", "debug"].map((type) => (
+            <button
+              key={type}
+              onClick={() => {
+                setOutputCanvasType(type);
+              }}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+        <canvas
+          style={{
+            width: "100%",
+            display: outputCanvasType === "normal" ? "block" : "none",
+          }}
+          ref={displayCanvasRef}
+        ></canvas>
+        <canvas
+          style={{
+            width: "100%",
+            display: outputCanvasType === "debug" ? "block" : "none",
+          }}
+          ref={debugCanvasRef}
+        ></canvas>
         <p>source</p>
         <canvas className="d-none" ref={sourceCanvasRef}></canvas>
+
+        <button onClick={handleStopClicked} style={{ padding: "0.5rem 2rem" }}>
+          Stop
+        </button>
+        <button
+          onClick={handleCaptureClicked}
+          style={{ padding: "0.5rem 2rem" }}
+        >
+          Capture
+        </button>
+        <canvas
+          className="d-none"
+          style={{ boxSizing: "content-box" }}
+          ref={captureCanvasRef}
+        ></canvas>
+
+        {captureImg && (
+          <>
+            <p>output img as {"<img>"} so you can save it</p>
+            <img src={captureImg.src} style={{ border: "1px solid #00ff00" }} />
+          </>
+        )}
 
         <img className="screenshot-image d-none" alt="" />
         <div className="controls">
