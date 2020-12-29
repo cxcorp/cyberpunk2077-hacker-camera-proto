@@ -8,8 +8,16 @@ Work in progress, ~~tensorflow and some additional OpenCV preprocessing needed~~
 
 Then once that's done, I'll have to figure out how to match the Sequences box with OpenCV.
 
-
 Online solver for the minigame available at https://github.com/cxcorp/cyberpunk2077-hacking-solver.
+
+## Contents
+  * [OCR Demo](#ocr-demo)
+    + [Quirks](#quirks)
+  * [Code matrix detection demo](#code-matrix-detection-demo)
+  * [Try it](#try-it)
+  * [Notes](#notes)
+  * [Getting Started with Create React App](#getting-started-with-create-react-app)
+
 
 ## OCR Demo
 
