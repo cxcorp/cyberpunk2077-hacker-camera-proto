@@ -2,11 +2,26 @@
 
 Read Cyberpunk 2077 hacking minigame's details with your phone camera, online. Client-side JS only.
 
-Work in progress, tensorflow and some additional OpenCV preprocessing needed.
+Finds the code matrix with OpenCV.js and math, corrects the camera perspective and runs each code matrix column thru Tesseract OCR (.js). Columns were found to be more accurate than rows or entire blocks.
+
+Work in progress, ~~tensorflow and some additional OpenCV preprocessing needed~~ some additional Tesseract.js error case handling required, then Code matrix reading is about ready to start polishing up for production. Main todo is handling missed digits by running their individual tiles or rows again thru Tesseract, or prompting for user input.
+
+Then once that's done, I'll have to figure out how to match the Sequences box with OpenCV.
+
 
 Online solver for the minigame available at https://github.com/cxcorp/cyberpunk2077-hacking-solver.
 
-## Demo
+## OCR Demo
+
+![](https://raw.githubusercontent.com/cxcorp/cyberpunk2077-hacker-camera-proto/master/docs/demo-ocr.gif)
+
+### Quirks
+
+Doesn't yet do 100% in all cases, but the individual missed digits can probably be caught by OCRing their tile separately, or perhaps their row. //todo. 
+
+![](https://raw.githubusercontent.com/cxcorp/cyberpunk2077-hacker-camera-proto/master/docs/demo-ocr-nah.gif)
+
+## Code matrix detection demo
 
 ![](https://raw.githubusercontent.com/cxcorp/cyberpunk2077-hacker-camera-proto/master/docs/demo.gif)
 
