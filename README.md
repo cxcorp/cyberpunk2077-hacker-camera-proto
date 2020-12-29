@@ -14,6 +14,42 @@ Online solver for the minigame available at https://github.com/cxcorp/cyberpunk2
 
 Clone repo, `npm i`, `npm start`, open ngrok tunnel `ngrok http 3000`, open ngrok's **HTTPS** link on your phone, and point it at the code matrix (or at a screenshot of one) to see a perspective corrected code grid - it automatically detects the grid size. If ngrok is no-go, try the `foxylion/nginx-self-signed-https` Docker image. HTTPS is needed to get the camera to work on mobile devices.
 
+
+## Notes
+
+Tesseract font training/finetuning, following [this tutorial](https://tesseract-ocr.github.io/tessdoc/TrainingTesseract-4.00#tesstutorial).
+
+```
+src/training/tesstrain.sh --fonts_dir ../rajdhani --lang eng --linedata_only \
+  --noextract_font_properties --langdata_dir ../langdata \
+  --training_text ../custom_traintext.txt \
+  --tessdata_dir ./tessdata --output_dir ../engeval --fontlist 'Rajdhani Semi-Bold' 'Rajdhani Regular'
+
+mkdir -p ../rajdhani_from_full
+combine_tessdata -e tessdata/best/eng.traineddata \
+  ../rajdhani_from_full/eng.lstm
+
+lstmtraining --model_output ../rajdhani_from_full/rajdhani \
+  --continue_from ../rajdhani_from_full/eng.lstm \
+  --traineddata tessdata/best/eng.traineddata \
+  --train_listfile ../engeval/eng.training_files.txt \
+  --max_iterations 400
+
+# test
+lstmeval --model ../rajdhani_from_full/rajdhani_checkpoint \
+  --traineddata tessdata/best/eng.traineddata \
+  --eval_listfile ../engeval/eng.training_files.txt
+
+# produce traineddata
+lstmtraining --stop_training \
+  --continue_from ../rajdhani_from_full/rajdhani_checkpoint \
+  --traineddata tessdata/best/eng.traineddata \
+  --model_output ../eng-rajdhani.traineddata
+
+# compress "best" -> "fast" traineddata (float->int)
+combine_tessdata -c ../eng-rajdhani.traineddata
+```
+
 ## Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
