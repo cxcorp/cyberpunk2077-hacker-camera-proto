@@ -1,5 +1,7 @@
 # cyberpunk2077-hacker-camera-proto
 
+https://cxcorp.github.io/cyberpunk2077-hacker-camera-proto/
+
 Read Cyberpunk 2077 hacking minigame's details with your phone camera, online. Client-side JS only.
 
 Finds the code matrix with OpenCV.js and math, corrects the camera perspective and runs each code matrix column thru Tesseract OCR (.js). Columns were found to be more accurate than rows or entire blocks.
