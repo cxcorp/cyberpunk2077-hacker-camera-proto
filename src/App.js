@@ -47,7 +47,7 @@ const loadTesseractWorkers = () => {
   for (let i = 0; i < 1; i++) {
     const worker = createWorker({
       langPath: `${process.env.PUBLIC_URL}/ocr`,
-      gzip: false,
+      gzip: true,
       logger: (msg) => {
         console.log(`[worker ${i}]: `, msg);
 
