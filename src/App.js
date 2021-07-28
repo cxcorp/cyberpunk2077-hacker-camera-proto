@@ -116,10 +116,6 @@ const vectorFromPoints = (start, end) => ({
 const vectorDot = (a, b) => a.x * b.x + a.y * b.y;
 
 function App() {
-  useEffect(() => {
-    window.feather.replace();
-  }, []);
-
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState();
 

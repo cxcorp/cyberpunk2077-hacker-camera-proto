@@ -5,10 +5,7 @@
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
-    <link
-      rel="stylesheet"
-      href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css"
-    />
+    <link rel="stylesheet" href="%PUBLIC_URL%/bootstrap-4.1.3.min.css" />
     <meta
       name="description"
       content="Web site created using create-react-app"
@@ -55,7 +52,11 @@
         (...logData) => log.push(logData.join("\t"))
       );
     </script>
-    <script src="https://unpkg.com/feather-icons"></script>
+    <script
+      src="%PUBLIC_URL%/js/feather-icons-4.28.0.min.js"
+      defer
+      onload="window.feather.replace()"
+    ></script>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
     <!--
