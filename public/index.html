@@ -32,8 +32,29 @@
   </head>
   <body>
     <!--<script src="/js/opencv_4_0_1.js"></script>-->
-    <p>pls wait for OpenCV.js to load</p>
-    <script src="https://docs.opencv.org/4.0.1/opencv.js"></script>
+    <p id="opencv-notice">pls wait for OpenCV.js to load</p>
+    <script src="%PUBLIC_URL%/js/wasm-feature-detect-1.2.11.js"></script>
+    <script src="%PUBLIC_URL%/js/opencv/loader.js"></script>
+    <script>
+      const pathsConfig = {
+        asm: "%PUBLIC_URL%/js/opencv/build_asm/opencv.js",
+        wasm: "%PUBLIC_URL%/js/opencv/build_wasm/opencv.js",
+        threads: "%PUBLIC_URL%/js/opencv/build_mt/opencv.js",
+        simd: "%PUBLIC_URL%/js/opencv/build_simd/opencv.js",
+        threadsSimd: "%PUBLIC_URL%/js/opencv/build_mtSIMD/opencv.js",
+      };
+      // Load OpenCV.js and use the pathsConfiguration and main function as the params.
+      const log = [];
+      loadOpenCV(
+        pathsConfig,
+        () => {
+          document.getElementById("opencv-notice").innerHTML = log.join(
+            decodeURIComponent("%3Cbr%2F%3E")
+          );
+        },
+        (...logData) => log.push(logData.join("\t"))
+      );
+    </script>
     <script src="https://unpkg.com/feather-icons"></script>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
