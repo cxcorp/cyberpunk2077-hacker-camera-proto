@@ -13,7 +13,7 @@
     "web-vitals": "^0.2.4"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "react-app-rewired start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -36,5 +36,8 @@
       "last 1 safari version"
     ]
   },
-  "homepage": "/cyberpunk2077-hacker-camera-proto"
+  "homepage": "/cyberpunk2077-hacker-camera-proto",
+  "devDependencies": {
+    "react-app-rewired": "^2.1.8"
+  }
 }
