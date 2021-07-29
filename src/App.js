@@ -288,7 +288,9 @@ function App() {
 
     let animFrameId;
 
-    const fpsSamples = [0, 0, 0, 0, 0, 0];
+    const fpsSamples = [
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
     const getFps = () => fpsSamples.reduce((a, b) => a + b) / fpsSamples.length;
     (async () => {
       /** @type {CanvasRenderingContext2D} */
