@@ -39,7 +39,7 @@ Doesn't yet do 100% in all cases, but the individual missed digits can probably 
 
 Built version here: https://cxcorp.github.io/cyberpunk2077-hacker-camera-proto/
 
-**WARNING**: The code is basically just stream of consciousness level of stuff - it's a prototype and it includes lots of hacky shit.
+**WARNING**: The code is basically just stream of consciousness level of stuff - it's a prototype and it includes lots of hacky stuff.
 
 Clone repo, `npm i`, `npm start`, open ngrok tunnel `ngrok http 3000`, open ngrok's **HTTPS** link on your phone, and point it at the code matrix (or at a screenshot of one) to see a perspective corrected code grid - it automatically detects the grid size. If ngrok is no-go, try the `foxylion/nginx-self-signed-https` Docker image. HTTPS is needed to get the camera to work on mobile devices.
 
