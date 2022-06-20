@@ -37,7 +37,9 @@ Doesn't yet do 100% in all cases, but the individual missed digits can probably 
 
 ## Try it
 
-Built version here: https://cxcorp.github.io/cyberpunk2077-hacker-camera-proto/
+Try the built version on your phone: https://cxcorp.github.io/cyberpunk2077-hacker-camera-proto/
+
+There are sample images to try with in the [`sample-images/`](./sample-images/) directory of this repo.
 
 **WARNING**: The code is basically just stream of consciousness level of stuff - it's a prototype and it includes lots of hacky stuff.
 
